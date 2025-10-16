@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Pedidos - Restaurante</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #fff5eb 0%, #ffe6e6 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: red;
+        }
+
+        .status-dot.ativo {
+            background: green;
+        }
+
+        .notificacao {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: none;
+        }
+
+        .notificacao.show {
+            display: block;
+        }
+
+        .notificacao.success { border-left: 4px solid #10b981; }
+        .notificacao.error { border-left: 4px solid #ef4444; }
+        .notificacao.info { border-left: 4px solid #3b82f6; }
+
+        .painel {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+            width: 100%;
+        }
+
+        button:hover {
+            background: #2563eb;
+        }
+
+        button.success { background: #10b981; }
+        button.success:hover { background: #059669; }
+        button.danger { background: #ef4444; }
+        button.danger:hover { background: #dc2626; }
+        button.warning { background: #f59e0b; }
+        button.warning:hover { background: #d97706; }
+
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .pedido {
+            background: #f9fafb;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 4px solid #3b82f6;
+        }
+
+        .pedido-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 10px;
+        }
+
+        .status-badge {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .status-pendente { background: #fef3c7; color: #92400e; }
+        .status-preparando { background: #dbeafe; color: #1e40af; }
+        .status-pronto { background: #d1fae5; color: #065f46; }
+        .status-entregue { background: #c7d2fe; color: #3730a3; }
+        .status-cancelado { background: #fee2e2; color: #991b1b; }
+        .status-expirado { background: #f3f4f6; color: #374151; }
+
+        .acoes {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .acoes button {
+            padding: 8px 16px;
+            font-size: 14px;
+            width: auto;
+            flex: 1;
+            min-width: 100px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        h1, h2 {
+            margin-bottom: 20px;
+            color: #1f2937;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            color: #6b7280;
+            font-size: 14px;
+        }
+
+        .selecao-usuario {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            max-width: 400px;
+            margin: 100px auto;
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.1);
+        }
+
+        .selecao-usuario h1 {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .selecao-usuario p {
+            text-align: center;
+            color: #6b7280;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Seleção de Usuário -->
+    <div id="selecaoUsuario" class="selecao-usuario">
+        <h1>🍽️ Sistema de Pedidos</h1>
+        <p>Selecione o tipo de usuário</p>
+        <button onclick="selecionarTipo('admin')">👨‍🍳 Administrador (Cozinha)</button>
+        <button onclick="selecionarTipo('cliente')">👤 Cliente</button>
+    </div>
+
+    <!-- Interface Principal -->
+    <div id="interfacePrincipal" class="container hidden">
+        <div class="header">
+            <h1 id="tituloUsuario">Sistema de Pedidos</h1>
+            <div class="status">
+                <div id="statusDot" class="status-dot"></div>
+                <span id="statusTexto">Sistema Inativo</span>
+            </div>
+        </div>
+
+        <div id="notificacao" class="notificacao"></div>
+
+        <!-- Painel Admin -->
+        <div id="painelAdmin" class="painel hidden">
+            <button id="btnIniciar" class="success" onclick="iniciarSistema()">
+                ▶️ Iniciar Sistema de Pedidos
+            </button>
+        </div>
+
+        <!-- Painel Cliente -->
+        <div id="painelCliente" class="painel hidden">
+            <h2>Fazer Pedido</h2>
+            <input type="text" id="nomeCliente" placeholder="Seu nome">
+            <textarea id="itensPedido" placeholder="Itens do pedido (ex: 2x Pizza, 1x Refrigerante)" rows="3"></textarea>
+            <button onclick="criarPedido()">📝 Criar Pedido</button>
+        </div>
+
+        <!-- Lista de Pedidos -->
+        <div class="painel">
+            <h2>Pedidos (<span id="totalPedidos">0</span>)</h2>
+            <div id="listaPedidos">
+                <p style="text-align: center; color: #6b7280; padding: 40px;">Nenhum pedido ainda</p>
+            </div>
+        </div>
+
+        <footer>
+            Desenvolvido por: Rafael Zink
+        </footer>
+    </div>
+
+    <script>
+        // Conecta ao servidor Socket.IO
+        const socket = io();
+
+        let tipoUsuario = null;
+        let sistemaAtivo = false;
+        let pedidos = [];
+
+        // Função: Selecionar tipo de usuário
+        function selecionarTipo(tipo) {
+            tipoUsuario = tipo;
+            document.getElementById('selecaoUsuario').classList.add('hidden');
+            document.getElementById('interfacePrincipal').classList.remove('hidden');
+            
+            if (tipo === 'admin') {
+                document.getElementById('tituloUsuario').textContent = '👨‍🍳 Painel da Cozinha';
+                document.getElementById('painelCliente').classList.add('hidden');
+                // Mostra o botão de iniciar se sistema não está ativo
+                if (!sistemaAtivo) {
+                    document.getElementById('painelAdmin').classList.remove('hidden');
+                }
+            } else {
+                document.getElementById('tituloUsuario').textContent = '👤 Painel do Cliente';
+                document.getElementById('painelAdmin').classList.add('hidden');
+                // Mostra formulário de pedido se sistema está ativo
+                if (sistemaAtivo) {
+                    document.getElementById('painelCliente').classList.remove('hidden');
+                }
+            }
+        }
+
+        // Função: Mostrar notificação
+        function mostrarNotificacao(mensagem, tipo) {
+            const notif = document.getElementById('notificacao');
+            notif.textContent = mensagem;
+            notif.className = `notificacao ${tipo} show`;
+            setTimeout(() => {
+                notif.classList.remove('show');
+            }, 3000);
+        }
+
+        // Função: Atualizar status do sistema
+        function atualizarStatus(ativo) {
+            sistemaAtivo = ativo;
+            const dot = document.getElementById('statusDot');
+            const texto = document.getElementById('statusTexto');
+            
+            if (ativo) {
+                dot.classList.add('ativo');
+                texto.textContent = 'Sistema Ativo';
+                document.getElementById('painelAdmin').classList.add('hidden');
+                if (tipoUsuario === 'cliente') {
+                    document.getElementById('painelCliente').classList.remove('hidden');
+                }
+            } else {
+                dot.classList.remove('ativo');
+                texto.textContent = 'Sistema Inativo';
+                document.getElementById('painelCliente').classList.add('hidden');
+                if (tipoUsuario === 'admin') {
+                    document.getElementById('painelAdmin').classList.remove('hidden');
+                }
+            }
+        }
+
+        // Função: Iniciar sistema (Admin)
+        function iniciarSistema() {
+            console.log('Iniciando sistema...');
+            socket.emit('sistema.iniciar');
+        }
+
+        // Função: Criar pedido (Cliente)
+        function criarPedido() {
+            const nome = document.getElementById('nomeCliente').value.trim();
+            const itens = document.getElementById('itensPedido').value.trim();
+
+            if (!nome || !itens) {
+                mostrarNotificacao('⚠️ Preencha todos os campos!', 'error');
+                return;
+            }
+
+            console.log('Criando pedido:', { cliente: nome, itens: itens });
+            socket.emit('pedido.criar', { cliente: nome, itens: itens });
+
+            document.getElementById('nomeCliente').value = '';
+            document.getElementById('itensPedido').value = '';
+        }
+
+        // Função: Aceitar pedido (Admin)
+        function aceitarPedido(id) {
+            console.log('Aceitando pedido:', id);
+            socket.emit('pedido.aceitar', id);
+        }
+
+        // Função: Finalizar pedido (Admin)
+        function finalizarPedido(id) {
+            console.log('Finalizando pedido:', id);
+            socket.emit('pedido.finalizar', id);
+        }
+
+        // Função: Cancelar pedido (Admin)
+        function cancelarPedido(id) {
+            console.log('Cancelando pedido:', id);
+            socket.emit('pedido.cancelar', id);
+        }
+
+        // Função: Entregar pedido (Admin)
+        function entregarPedido(id) {
+            console.log('Entregando pedido:', id);
+            socket.emit('pedido.entregar', id);
+        }
+
+        // Função: Renderizar lista de pedidos
+        function renderizarPedidos() {
+            const lista = document.getElementById('listaPedidos');
+            document.getElementById('totalPedidos').textContent = pedidos.length;
+
+            if (pedidos.length === 0) {
+                lista.innerHTML = '<p style="text-align: center; color: #6b7280; padding: 40px;">Nenhum pedido ainda</p>';
+                return;
+            }
+
+            lista.innerHTML = pedidos.map(pedido => {
+                let botoesHtml = '';
+                
+                if (tipoUsuario === 'admin') {
+                    botoesHtml = '<div class="acoes">';
+                    
+                    // Botão Aceitar - apenas para pedidos pendentes
+                    if (pedido.status === 'pendente') {
+                        botoesHtml += `<button class="success" onclick="aceitarPedido(${pedido.id})">✅ Aceitar</button>`;
+                    }
+                    
+                    // Botão Finalizar - apenas para pedidos em preparo
+                    if (pedido.status === 'preparando') {
+                        botoesHtml += `<button class="success" onclick="finalizarPedido(${pedido.id})">🍽️ Finalizar</button>`;
+                    }
+                    
+                    // Botão Entregar - apenas para pedidos prontos
+                    if (pedido.status === 'pronto') {
+                        botoesHtml += `<button class="success" onclick="entregarPedido(${pedido.id})">🚚 Entregar</button>`;
+                    }
+                    
+                    // Botão Cancelar - não disponível para pedidos já entregues, cancelados ou expirados
+                    if (pedido.status !== 'entregue' && pedido.status !== 'cancelado' && pedido.status !== 'expirado') {
+                        botoesHtml += `<button class="danger" onclick="cancelarPedido(${pedido.id})">❌ Cancelar</button>`;
+                    }
+                    
+                    botoesHtml += '</div>';
+                }
+                
+                return `
+                    <div class="pedido">
+                        <div class="pedido-header">
+                            <div>
+                                <h3>Pedido #${pedido.id}</h3>
+                                <p><strong>Cliente:</strong> ${pedido.cliente}</p>
+                                <p><strong>Itens:</strong> ${pedido.itens}</p>
+                                <p style="font-size: 12px; color: #6b7280;">Criado às: ${pedido.criadoEm}</p>
+                            </div>
+                            <span class="status-badge status-${pedido.status}">
+                                ${pedido.status.toUpperCase()}
+                            </span>
+                        </div>
+                        ${botoesHtml}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // ========== ESCUTA DE EVENTOS DO SERVIDOR ==========
+
+        // EVENTO: estado.inicial
+        socket.on('estado.inicial', (dados) => {
+            console.log('Estado inicial recebido:', dados);
+            sistemaAtivo = dados.sistemaAtivo;
+            pedidos = dados.pedidos || [];
+            atualizarStatus(sistemaAtivo);
+            renderizarPedidos();
+        });
+
+        // EVENTO: sistema.iniciado
+        socket.on('sistema.iniciado', (dados) => {
+            console.log('Sistema iniciado:', dados);
+            atualizarStatus(true);
+            mostrarNotificacao(`✅ ${dados.mensagem}`, 'success');
+        });
+
+        // EVENTO: pedido.criado
+        socket.on('pedido.criado', (pedido) => {
+            console.log('Pedido criado:', pedido);
+            pedidos.push(pedido);
+            renderizarPedidos();
+            mostrarNotificacao(`🔔 Novo pedido #${pedido.id} de ${pedido.cliente}`, 'info');
+        });
+
+        // EVENTO: pedido.aceito
+        socket.on('pedido.aceito', (pedidoAtualizado) => {
+            console.log('Pedido aceito:', pedidoAtualizado);
+            const index = pedidos.findIndex(p => p.id === pedidoAtualizado.id);
+            if (index !== -1) {
+                pedidos[index] = pedidoAtualizado;
+                renderizarPedidos();
+                mostrarNotificacao(`👨‍🍳 Pedido #${pedidoAtualizado.id} aceito pela cozinha`, 'success');
+            }
+        });
+
+        // EVENTO: pedido.finalizado
+        socket.on('pedido.finalizado', (pedidoAtualizado) => {
+            console.log('Pedido finalizado:', pedidoAtualizado);
+            const index = pedidos.findIndex(p => p.id === pedidoAtualizado.id);
+            if (index !== -1) {
+                pedidos[index] = pedidoAtualizado;
+                renderizarPedidos();
+                mostrarNotificacao(`✅ Pedido #${pedidoAtualizado.id} está pronto!`, 'success');
+            }
+        });
+
+        // EVENTO: pedido.cancelado
+        socket.on('pedido.cancelado', (pedidoAtualizado) => {
+            console.log('Pedido cancelado:', pedidoAtualizado);
+            const index = pedidos.findIndex(p => p.id === pedidoAtualizado.id);
+            if (index !== -1) {
+                pedidos[index] = pedidoAtualizado;
+                renderizarPedidos();
+                mostrarNotificacao(`❌ Pedido #${pedidoAtualizado.id} foi cancelado`, 'error');
+            }
+        });
+
+        // EVENTO: pedido.expirado
+        socket.on('pedido.expirado', (pedidoAtualizado) => {
+            console.log('Pedido expirado:', pedidoAtualizado);
+            const index = pedidos.findIndex(p => p.id === pedidoAtualizado.id);
+            if (index !== -1) {
+                pedidos[index] = pedidoAtualizado;
+                renderizarPedidos();
+                mostrarNotificacao(`⏰ Pedido #${pedidoAtualizado.id} expirou`, 'error');
+            }
+        });
+
+        // EVENTO: pedido.entregue
+        socket.on('pedido.entregue', (pedidoAtualizado) => {
+            console.log('Pedido entregue:', pedidoAtualizado);
+            const index = pedidos.findIndex(p => p.id === pedidoAtualizado.id);
+            if (index !== -1) {
+                pedidos[index] = pedidoAtualizado;
+                renderizarPedidos();
+                mostrarNotificacao(`🚚 Pedido #${pedidoAtualizado.id} foi entregue!`, 'success');
+            }
+        });
+
+        // EVENTO: erro.operacao
+        socket.on('erro.operacao', (dados) => {
+            console.log('Erro:', dados);
+            mostrarNotificacao(`⚠️ ${dados.mensagem}`, 'error');
+        });
+
+        // Evento de conexão
+        socket.on('connect', () => {
+            console.log('✅ Conectado ao servidor Socket.IO');
+        });
+
+        // Evento de desconexão
+        socket.on('disconnect', () => {
+            console.log('❌ Desconectado do servidor');
+            mostrarNotificacao('⚠️ Desconectado do servidor', 'error');
+        });
+
+        // Log de erro de conexão
+        socket.on('connect_error', (error) => {
+            console.error('Erro de conexão:', error);
+            mostrarNotificacao('⚠️ Erro ao conectar com o servidor', 'error');
+        });
+    </script>
+</body>
+</html>
