@@ -4,7 +4,7 @@ Disciplina: Linguagem de Programação e Paradigmas
 Professor: Esp. Ademar Perfoll Junior
 
 👥 Desenvolvido por
-@SeuUsuarioGitHub - https://github.com/RafaZinke/Linguagem-E-paradigmas
+@SeuUsuarioGitHub - https://github.com/RafaZinke/Linguagem-E-paradigmas/tree/main/sistema-pedidos
 @Aluno - Rafael Zink
 
 Para iniciar o projeto deve-se ter o node instalado
